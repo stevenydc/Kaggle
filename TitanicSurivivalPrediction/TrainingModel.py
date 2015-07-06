@@ -20,14 +20,14 @@ data = np.array(data)
 # proportion_survivor = num_survivor/float(num_passenger)
 #
 #
-# women_passenger = data[::,4] == 'female'
+women_passenger = data[::,4] == 'female'
 # men_passenger = data[::,4] != 'female'
 #
 # num_women = len(data[women_passenger])        # women_passenger is an array! different from list.
 #                                               # so women_passenger is like a mask.... blocks false values
 # num_men = len(data[men_passenger])            # data[women_passenger] picks out the rows where women_passenger = True
 #
-# num_women_survivor = sum(data[women_passenger,1].astype(float))
+num_women_survivor = sum(data[women_passenger,1].astype(float))
 # num_men_survivor = sum(data[men_passenger,1].astype(float))
 #
 # proportion_men_survivor = num_men_survivor/num_men
