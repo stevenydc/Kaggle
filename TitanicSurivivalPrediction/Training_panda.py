@@ -3,6 +3,7 @@ import csv as csv
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
+from sklearn import svm
 
 # get_ipython().magic(u'ls ')
 # get_ipython().magic(u'cd Documents/')
@@ -21,22 +22,21 @@ print data
 
 
 df = pd.read_csv("train.csv",header=0)
-df
-df.head(3)
-type(df)
-df.dtypes
-df.info()
-df.describe()
-df['Age'][0:10]
-df.Age[0:10]
-type(df['Age'])
-df['Age'].mean()
-df['Age'].median()
-df[['Sex', 'Pclass', 'Age']]
-df[df['Age'] > 60]
 
-df[df['Age'] > 60][['Sex', 'Pclass', 'Age', 'Survived']]
-df[df['Age'].isnull()][['Sex', 'Pclass', 'Age']]
+# type(df)
+# df.dtypes
+# df.info()
+# df.describe()
+# df['Age'][0:10]
+# df.Age[0:10]
+# type(df['Age'])
+# df['Age'].mean()
+# df['Age'].median()
+# df[['Sex', 'Pclass', 'Age']]
+# df[df['Age'] > 60]
+# 
+# df[df['Age'] > 60][['Sex', 'Pclass', 'Age', 'Survived']]
+# df[df['Age'].isnull()][['Sex', 'Pclass', 'Age']]
 
 for i in range(1,4):
     print i, len(df[ (df['Sex'] == 'male') & (df['Pclass'] == i)])
@@ -89,6 +89,11 @@ Ports_dict = {name:i for i,name in Ports}           # creating a dict so that we
 df['Embarked'] = df['Embarked'].map(Ports_dict)
 
 df.drop(['Name','Sex','Ticket','Cabin','PassengerId', 'Age'],inplace=True, axis = 1) # df is left with only useful data now
+
+
+
+
+
 '''
 ======= END of Training data cleaning ====
 '''
@@ -119,9 +124,30 @@ test_ids = test_df.PassengerId
 # Now we can drop everything in that test_df that we don't use
 test_df.drop(['Cabin','Age','PassengerId','Name','Sex','Ticket'], inplace = True, axis = 1)
 
+
+
+
 '''
 ======= END of cleaning test data ====
 '''
+
+
+'''
+======= Normalizing stuff
+'''
+
+# normalizing stuff
+comb_SibSp = pd.concat([df.SibSp, test_df.SibSp])
+df.SibSp = (df.SibSp - comb_SibSp.mean())/comb_SibSp.std()
+test_df.SibSp = (test_df.SibSp - comb_SibSp.mean())/comb_SibSp.std()
+comb_Parch = pd.concat([df.Parch, test_df.Parch])
+df.Parch = (df.Parch - comb_Parch.mean())/comb_Parch.std()
+test_df.Parch = (test_df.Parch - comb_Parch.mean())/comb_Parch.std()
+
+
+
+
+
 
 '''
 ======= Start of predicting using RandomForest ====
@@ -131,31 +157,93 @@ train_data = df.values
 test_data = test_df.values
 
 print "Training..."
-forest = RandomForestClassifier(n_estimators = 100)
+forest = RandomForestClassifier(n_estimators = 20)
 forest = forest.fit(train_data[::,1::], train_data[::, 0])
 
 print "Predicting..."
 output = forest.predict(test_data).astype(int)
+output_train = forest.predict(train_data[::,1::]).astype(int)
+if (len(train_data) != len(output_train)): print "something wrong"
+else: print "Random Forest Accuracy:", len(output_train[train_data[::,0] == output_train])/float(len(output_train))
 
+# ============ making the prediction file============
+# prediction_file = open("myPandaPrediction.csv", "wb")
+# open_file_object = csv.writer(prediction_file)
+# open_file_object.writerow(["PassengerId", "Survived"])
+# open_file_object.writerows(zip(test_ids,output))
+# prediction_file.close()
+# print 'Done'
 
-prediction_file = open("myPandaPrediction.csv", "wb")
-open_file_object = csv.writer(prediction_file)
-open_file_object.writerow(["PassengerId", "Survived"])
-open_file_object.writerows(zip(test_ids,output))
-prediction_file.close()
-print 'Done'
+'''
+============ Learning curve using SVM or RF with %80 %20 training/CV data =====
+'''
+from sklearn.grid_search import GridSearchCV
+from time import time
 
-# Trying predicting with SVM
-from sklearn import svm
+train_data = df.values
+test_data = test_df.values
+
+train_data = np.random.permutation(train_data[::,::])
+temp = np.size(train_data,0)/5
+cv_data = train_data[0:temp:,::]
+train_data2 = train_data[temp::,::]
+
+#
+# clf_svm = svm.SVC()
+# clf_svm.fit(train_data2[::,1::],train_data2[::,0])
+#
+# outcome_train2 = clf_svm.predict(train_data2[::,1::]).astype(int)
+# train2_accuracy = len(train_data2[train_data2[::,0] == outcome_train2]) / float(len(outcome_train2))
+#
+# outcome_cv = clf_svm.predict(cv_data[::,1::]).astype(int)
+# cv_accuracy = len(cv_data[cv_data[::,0] == outcome_cv]) / float(len(outcome_cv))
+
+t0 = time()
+param_grid = {'C': [0.5, 0.6, 0.4, 0.7, 0.3],
+              'gamma': [0.005, 0.001, 0.0005, 0.0001, 0.05, 0.01]
+              }
+clf = GridSearchCV(svm.SVC(kernel='rbf', class_weight='auto'), param_grid, cv = 5)
+# clf = svm.SVC(kernel='sigmoid', class_weight='auto', gamma = 0.004, C = 0.5)
+print "Fitting data..."
+clf = clf.fit(train_data2[::,1::], train_data2[::,0])
+print "done"
+print("done in %0.3fs" % (time() - t0))
+print("Best estimator found by grid search:")
+print(clf.best_estimator_)
+
+outcome_train2 = clf.predict(train_data2[::,1::]).astype(int)
+train2_accuracy = len(train_data2[train_data2[::,0] == outcome_train2]) / float(len(outcome_train2))
+
+outcome_cv = clf.predict(cv_data[::,1::]).astype(int)
+cv_accuracy = len(cv_data[cv_data[::,0] == outcome_cv]) / float(len(outcome_cv))
+
+print "SVM training data accuracy:" , train2_accuracy, "  CV data accuracy:", cv_accuracy
+
+'''
+============== Trying predicting with SVM ============
+'''
+train_data = df.values
+test_data = test_df.values
 
 clf_svm = svm.SVC()
 print "Training..."
-clf_svm.fit(train_data[::,1::],train_data[::,0])
+t0 = time()
+param_grid = {'C': [4.5, 5, 5.6],
+              'gamma': [0.05, 0.01]}
+clf = GridSearchCV(svm.SVC(kernel='rbf', class_weight='auto'), param_grid)
+clf = clf.fit(train_data[::,1::], train_data[::,0])
+print("done in %0.3fs" % (time() - t0))
+print("Best estimator found by grid search:")
+print(clf.best_estimator_)
+
+
 
 print "Predicting..."
-outcome = clf_svm.predict(test_data[::]).astype(int)
+outcome = clf.predict(test_data[::]).astype(int)
 
-prediction_file = open("myPandaPrediction.csv", "wb")
+
+# ============ making the prediction file============
+prediction_file = open("July23_SVM(2).csv", "wb")
 open_file_object = csv.writer(prediction_file)
 open_file_object.writerow(["PassengerId", "Survived"])
 open_file_object.writerows(zip(test_ids,outcome))
