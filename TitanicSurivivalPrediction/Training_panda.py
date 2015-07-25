@@ -144,6 +144,10 @@ comb_Parch = pd.concat([df.Parch, test_df.Parch])
 df.Parch = (df.Parch - comb_Parch.mean())/comb_Parch.std()
 test_df.Parch = (test_df.Parch - comb_Parch.mean())/comb_Parch.std()
 
+comb_AgeFill = pd.concat([df.AgeFill,test_df.AgeFill])
+df.AgeFill = (df.AgeFill - comb_AgeFill.mean())/comb_AgeFill.std()
+test_df.AgeFill = (test_df.AgeFill - comb_AgeFill.mean())/comb_AgeFill.std()
+
 
 
 
@@ -156,23 +160,89 @@ test_df.Parch = (test_df.Parch - comb_Parch.mean())/comb_Parch.std()
 train_data = df.values
 test_data = test_df.values
 
+train_data = np.random.permutation(train_data[::,::])
+temp = np.size(train_data,0)/5
+cv_data = train_data[0:temp:,::]
+train_data2 = train_data[temp::,::]
+
+from time import time
+from operator import itemgetter
+from scipy.stats import randint as sp_randint
+
+from sklearn.grid_search import GridSearchCV, RandomizedSearchCV
+
+# Utility function to report best scores
+def report(grid_scores, n_top=3):
+    top_scores = sorted(grid_scores, key=itemgetter(1), reverse=True)[:n_top]
+    for i, score in enumerate(top_scores):
+        print("Model with rank: {0}".format(i + 1))
+        print("Mean validation score: {0:.3f} (std: {1:.3f})".format(
+              score.mean_validation_score,
+              np.std(score.cv_validation_scores)))
+        print("Parameters: {0}".format(score.parameters))
+        print("")
+# specify parameters and distributions to sample from
+param_dist = {"max_depth": [3, None],
+              "max_features": sp_randint(1, 7),
+              "min_samples_split": sp_randint(1, 11),
+              "min_samples_leaf": sp_randint(1, 11),
+              "bootstrap": [True, False],
+              "criterion": ["gini", "entropy"]}
+
+
 print "Training..."
-forest = RandomForestClassifier(n_estimators = 20)
-forest = forest.fit(train_data[::,1::], train_data[::, 0])
+forest = RandomForestClassifier(n_estimators = 100)
+
+# run randomized search
+n_iter_search = 30
+random_search = RandomizedSearchCV(forest, param_distributions=param_dist,
+                                   n_iter=n_iter_search)
+
+start = time()
+random_search.fit(train_data[::,1::], train_data[::,0])
+print("RandomizedSearchCV took %.2f seconds for %d candidates"
+      " parameter settings." % ((time() - start), n_iter_search))
+report(random_search.grid_scores_)
+
+
+
+
+train_data = np.random.permutation(train_data[::,::])
+temp = np.size(train_data,0)/5
+cv_data = train_data[0:temp:,::]
+train_data2 = train_data[temp::,::]
+#
+# forest = RandomForestClassifier(n_estimators= 100, bootstrap = True, min_samples_leaf = 7, min_samples_split = 7,
+#                                  criterion = 'gini', max_features = 3, max_depth= None)
+# forest = forest.fit(train_data2[::,1::], train_data2[::, 0])
 
 print "Predicting..."
-output = forest.predict(test_data).astype(int)
-output_train = forest.predict(train_data[::,1::]).astype(int)
-if (len(train_data) != len(output_train)): print "something wrong"
-else: print "Random Forest Accuracy:", len(output_train[train_data[::,0] == output_train])/float(len(output_train))
+# output_cv = forest.predict(cv_data[::,1::]).astype(int)
+# output_train = forest.predict(train_data2[::,1::]).astype(int)
+
+output_cv = random_search.predict(cv_data[::,1::]).astype(int)
+output_train = random_search.predict(train_data2[::,1::]).astype(int)
+print "Done..."
+if (len(train_data2) != len(output_train)): print "something wrong"
+else:
+    print "RF Training Accuracy:", \
+        len(output_train[train_data2[::,0] == output_train])/float(len(output_train)),
+    print "CV Accuracy:", len(output_cv[output_cv == cv_data[::,0]])/float(len(output_cv))
+
+# real test data
+test_data = test_df.values
+
+output = random_search.predict(test_data).astype(int)
+
+train_data = df.values
 
 # ============ making the prediction file============
-# prediction_file = open("myPandaPrediction.csv", "wb")
-# open_file_object = csv.writer(prediction_file)
-# open_file_object.writerow(["PassengerId", "Survived"])
-# open_file_object.writerows(zip(test_ids,output))
-# prediction_file.close()
-# print 'Done'
+prediction_file = open("July25_RF.csv", "wb")
+open_file_object = csv.writer(prediction_file)
+open_file_object.writerow(["PassengerId", "Survived"])
+open_file_object.writerows(zip(test_ids,output))
+prediction_file.close()
+print 'Done'
 
 '''
 ============ Learning curve using SVM or RF with %80 %20 training/CV data =====
