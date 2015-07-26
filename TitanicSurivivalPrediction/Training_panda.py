@@ -148,7 +148,13 @@ comb_AgeFill = pd.concat([df.AgeFill,test_df.AgeFill])
 df.AgeFill = (df.AgeFill - comb_AgeFill.mean())/comb_AgeFill.std()
 test_df.AgeFill = (test_df.AgeFill - comb_AgeFill.mean())/comb_AgeFill.std()
 
+comb_Pclass = pd.concat([df.Pclass,test_df.Pclass])
+df.Pclass = (df.Pclass - comb_Pclass.mean())/comb_Pclass.std()
+test_df.Pclass = (test_df.Pclass - comb_Pclass.mean())/comb_Pclass.std()
 
+comb_Embarked = pd.concat([df.Embarked,test_df.Embarked])
+df.Embarked = (df.Embarked - comb_Embarked.mean())/comb_Embarked.std()
+test_df.Embarked = (test_df.Embarked - comb_Embarked.mean())/comb_Embarked.std()
 
 
 
@@ -183,11 +189,11 @@ def report(grid_scores, n_top=3):
         print("")
 # specify parameters and distributions to sample from
 param_dist = {"max_depth": [3, None],
-              "max_features": sp_randint(1, 7),
-              "min_samples_split": sp_randint(1, 11),
-              "min_samples_leaf": sp_randint(1, 11),
+              "max_features": sp_randint(3, 7),
+              "min_samples_split": sp_randint(4, 7),
+              "min_samples_leaf": sp_randint(3, 8),
               "bootstrap": [True, False],
-              "criterion": ["gini", "entropy"]}
+              "criterion": ["entropy"]}
 
 
 print "Training..."
@@ -205,39 +211,49 @@ print("RandomizedSearchCV took %.2f seconds for %d candidates"
 report(random_search.grid_scores_)
 
 
+temp_train_acc = 0
+temp_cv_acc = 0
+trials = 10
+for i in range(trials):
+    print "preparing trial data #", i
+    train_data = np.random.permutation(train_data[::,::])
+    temp = np.size(train_data,0)/5
+    cv_data = train_data[0:temp:,::]
+    train_data2 = train_data[temp::,::]
+    #
+    # forest = RandomForestClassifier(n_estimators= 100, bootstrap = True, min_samples_leaf = 7, min_samples_split = 7,
+    #                                  criterion = 'gini', max_features = 3, max_depth= None)
+    # forest = forest.fit(train_data2[::,1::], train_data2[::, 0])
+    random_search = RandomizedSearchCV(forest, param_distributions=param_dist,
+                                   n_iter=n_iter_search)
+    random_search.fit(train_data2[::,1::], train_data2[::,0])
+
+    print "Predicting..."
+    # output_cv = forest.predict(cv_data[::,1::]).astype(int)
+    # output_train = forest.predict(train_data2[::,1::]).astype(int)
+
+    output_cv = random_search.predict(cv_data[::,1::]).astype(int)
+    output_train = random_search.predict(train_data2[::,1::]).astype(int)
+    print "Done..."
+    if (len(train_data2) != len(output_train)): print "something wrong"
+    else:
+        temp_cv_acc += len(output_cv[output_cv == cv_data[::,0]])/float(len(output_cv))
+        temp_train_acc += len(output_train[train_data2[::,0] == output_train])/float(len(output_train))
 
 
-train_data = np.random.permutation(train_data[::,::])
-temp = np.size(train_data,0)/5
-cv_data = train_data[0:temp:,::]
-train_data2 = train_data[temp::,::]
-#
-# forest = RandomForestClassifier(n_estimators= 100, bootstrap = True, min_samples_leaf = 7, min_samples_split = 7,
-#                                  criterion = 'gini', max_features = 3, max_depth= None)
-# forest = forest.fit(train_data2[::,1::], train_data2[::, 0])
+print "RF Training Accuracy:", temp_train_acc/trials,
+print "CV Accuracy:", temp_cv_acc/trials
 
-print "Predicting..."
-# output_cv = forest.predict(cv_data[::,1::]).astype(int)
-# output_train = forest.predict(train_data2[::,1::]).astype(int)
 
-output_cv = random_search.predict(cv_data[::,1::]).astype(int)
-output_train = random_search.predict(train_data2[::,1::]).astype(int)
-print "Done..."
-if (len(train_data2) != len(output_train)): print "something wrong"
-else:
-    print "RF Training Accuracy:", \
-        len(output_train[train_data2[::,0] == output_train])/float(len(output_train)),
-    print "CV Accuracy:", len(output_cv[output_cv == cv_data[::,0]])/float(len(output_cv))
+
 
 # real test data
 test_data = test_df.values
 
 output = random_search.predict(test_data).astype(int)
 
-train_data = df.values
-
 # ============ making the prediction file============
-prediction_file = open("July25_RF.csv", "wb")
+prediction_file = open("July27_RF.csv", "wb")
 open_file_object = csv.writer(prediction_file)
 open_file_object.writerow(["PassengerId", "Survived"])
 open_file_object.writerows(zip(test_ids,output))
@@ -252,12 +268,6 @@ from time import time
 
 train_data = df.values
 test_data = test_df.values
-
-train_data = np.random.permutation(train_data[::,::])
-temp = np.size(train_data,0)/5
-cv_data = train_data[0:temp:,::]
-train_data2 = train_data[temp::,::]
-
 #
 # clf_svm = svm.SVC()
 # clf_svm.fit(train_data2[::,1::],train_data2[::,0])
@@ -269,10 +279,11 @@ train_data2 = train_data[temp::,::]
 # cv_accuracy = len(cv_data[cv_data[::,0] == outcome_cv]) / float(len(outcome_cv))
 
 t0 = time()
-param_grid = {'C': [0.5, 0.6, 0.4, 0.7, 0.3],
-              'gamma': [0.005, 0.001, 0.0005, 0.0001, 0.05, 0.01]
+param_grid = {'C': [5, 10, 15, 20, 25],
+              'gamma': [0.005, 0.001, 0.05, 0.01],
+              'kernel': ['rbf']
               }
-clf = GridSearchCV(svm.SVC(kernel='rbf', class_weight='auto'), param_grid, cv = 5)
+clf = GridSearchCV(svm.SVC(class_weight='auto'), param_grid, cv = 3)
 # clf = svm.SVC(kernel='sigmoid', class_weight='auto', gamma = 0.004, C = 0.5)
 print "Fitting data..."
 clf = clf.fit(train_data2[::,1::], train_data2[::,0])
@@ -281,16 +292,34 @@ print("done in %0.3fs" % (time() - t0))
 print("Best estimator found by grid search:")
 print(clf.best_estimator_)
 
-outcome_train2 = clf.predict(train_data2[::,1::]).astype(int)
-train2_accuracy = len(train_data2[train_data2[::,0] == outcome_train2]) / float(len(outcome_train2))
 
-outcome_cv = clf.predict(cv_data[::,1::]).astype(int)
-cv_accuracy = len(cv_data[cv_data[::,0] == outcome_cv]) / float(len(outcome_cv))
 
-print "SVM training data accuracy:" , train2_accuracy, "  CV data accuracy:", cv_accuracy
+temp_train_acc = 0
+temp_cv_acc = 0
+trials = 12
+for i in range(trials):
+    print "Preparing new data"
+    train_data = np.random.permutation(train_data[::,::])
+    temp = np.size(train_data,0)/5
+    cv_data = train_data[0:temp:,::]
+    train_data2 = train_data[temp::,::]
+
+    print "Fitting data..."
+    clf = clf.fit(train_data2[::,1::], train_data2[::,0])
+    print "done"
+    print(clf.best_estimator_)
+
+    print "predicting..."
+    outcome_train2 = clf.predict(train_data2[::,1::]).astype(int)
+    temp_train_acc += len(train_data2[train_data2[::,0] == outcome_train2]) / float(len(outcome_train2))
+
+    outcome_cv = clf.predict(cv_data[::,1::]).astype(int)
+    temp_cv_acc += len(cv_data[cv_data[::,0] == outcome_cv]) / float(len(outcome_cv))
+
+print "SVM training data accuracy:" , temp_train_acc/trials, "  CV data accuracy:", temp_cv_acc/trials
 
 '''
-============== Trying predicting with SVM ============
+============== Predicting on the whole data set with SVM ============
 '''
 train_data = df.values
 test_data = test_df.values
@@ -298,9 +327,11 @@ test_data = test_df.values
 clf_svm = svm.SVC()
 print "Training..."
 t0 = time()
-param_grid = {'C': [4.5, 5, 5.6],
-              'gamma': [0.05, 0.01]}
-clf = GridSearchCV(svm.SVC(kernel='rbf', class_weight='auto'), param_grid)
+param_grid = {'C': [5, 10, 15, 20, 25],
+              'gamma': [0.005, 0.001, 0.05, 0.01],
+              'kernel': ['rbf']
+              }
+clf = GridSearchCV(svm.SVC(class_weight='auto'), param_grid, cv = 3)
 clf = clf.fit(train_data[::,1::], train_data[::,0])
 print("done in %0.3fs" % (time() - t0))
 print("Best estimator found by grid search:")
@@ -313,7 +344,7 @@ outcome = clf.predict(test_data[::]).astype(int)
 
 
 # ============ making the prediction file============
-prediction_file = open("July23_SVM(2).csv", "wb")
+prediction_file = open("July27_SVM.csv", "wb")
 open_file_object = csv.writer(prediction_file)
 open_file_object.writerow(["PassengerId", "Survived"])
 open_file_object.writerows(zip(test_ids,outcome))
