@@ -89,9 +89,6 @@ test_df['Gender'] = test_df['Sex'].map({'female':0, 'male':1})
 # Creating AgeFill feature like before
 test_df["AgeFill"] = test_df.apply(lambda x: median_ages[x.Gender, x.Pclass-1] if x.Age != x.Age else x.Age, axis = 1)
 
-# Fixing the Embarked feature like before
-test_df.Embarked = test_df.Embarked.map(Ports_dict)
-
 # this table contains the median_Fare for each class. Will be used to fill in empty Fare values for some data
 median_Fare = np.zeros(3)
 for i in range(3):
@@ -104,6 +101,8 @@ test_df.loc[test_df.Fare.isnull(),'Fare'] = test_df[test_df.Fare.isnull()].apply
 # Save the PassengerId for later use (generating file)... since it is not used as a parameter for our prediction model
 test_ids = test_df.PassengerId
 
+# # Fixing the Embarked feature like before
+# test_df.Embarked = test_df.Embarked.map(Ports_dict)
 # Transforming Embarked categorical variable to several binary variables
 test_df = pd.concat([test_df, pd.get_dummies(test_df.Embarked).rename(columns=lambda x: 'Embarked_' + str(x))], axis=1)
 
@@ -259,8 +258,8 @@ def report(grid_scores, n_top=1):
         print("Parameters: {0}".format(score.parameters))
         print("")
 # specify parameters and distributions to sample from
-param_dist = {"max_depth": [3, None],
-              "max_features": sp_randint(5, 20),
+param_dist = {"max_depth": [5, None],
+              "max_features": sp_randint(5, 11),
               "min_samples_split": sp_randint(2, 11),
               "min_samples_leaf": sp_randint(3, 11),
               "bootstrap": [True, False],
@@ -270,16 +269,16 @@ param_dist = {"max_depth": [3, None],
 print "Training..."
 train_data = df.values
 train_data = np.random.permutation(train_data[::,::])
-temp = np.size(train_data,0)/5
+temp = np.size(train_data,0)/4
 cv_data = train_data[0:temp:,::]
 train_data2 = train_data[temp::,::]
 
 
-forest = RandomForestClassifier(n_estimators = 100)
+forest = RandomForestClassifier(n_estimators = 25)
 # run randomized search
 n_iter_search = 30
 random_search = RandomizedSearchCV(forest, param_distributions=param_dist,
-                                   n_iter=n_iter_search, cv=10)
+                                   n_iter=n_iter_search, cv=6)
 
 start = time()
 random_search.fit(train_data2[::,1::], train_data2[::,0])
@@ -302,7 +301,8 @@ feature_importance = 100.0 * (feature_importance / feature_importance.max())
 
 feature_list = df.columns.values
 
-
+df.drop(feature_list[feature_importance<10],inplace=True,axis=1)
+test_df.drop(feature_list[feature_importance<10],inplace=True,axis=1)
 
 print "Predicting..."
 test_data = test_df.values
@@ -350,7 +350,7 @@ print "the two outputs are %.5f%% similar" % (len(output2[output2 == output])/fl
 '''
 ======= Making files =======
 '''
-prediction_file = open("July31_RF.csv", "wb")
+prediction_file = open("July31_RF(IC1).csv", "wb")
 open_file_object = csv.writer(prediction_file)
 open_file_object.writerow(["PassengerId", "Survived"])
 open_file_object.writerows(zip(test_ids,output))
